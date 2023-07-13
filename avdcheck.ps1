@@ -1,4 +1,5 @@
-#region LAUNCHER UPDATER
+#region LAUNCHER
+if($null -eq $args[0]) { Exit }
 if((Get-ChildItem | Where-Object Name -like "launcher_new.exe").Length -gt 0){
     $root = [System.Environment]::CurrentDirectory
     Remove-Item -Path ($root+"\launcher.exe") -Force
@@ -9,10 +10,12 @@ if((Get-ChildItem | Where-Object Name -like "launcher_new.exe").Length -gt 0){
 #endregion
 
 #region CONFIGURATION
+$ProgressPreference = 'SilentlyContinue'
 $minIntelCPUModifier = 3 # Brand modifier
 $minIntelCPUClock = 3000 # Megahertz
+$intelCPUExceptions = "i3-8020T", "i3-8320T", "i3-8320"
 $minAMDCPUModifier = 3 # Brand modifier
-$minAMDCPUClock = 3800 # Megahertz
+$minAMDCPUClock = 3000 # Megahertz
 $maxCPULoad = 60 # %
 
 $minAvailableRAM = 4096 # Megabytes
@@ -25,18 +28,13 @@ $maxLatency = 35 # Miliseconds
 $forbiddenApps = "UTorrent", "BitTorrent", "Azureus", "Instagram", "Tiktok", "Snapchat", "WhatsApp", 
 "FacebookMessenger", "Discord", "Netflix", "HBO", "Steam", "UnrealEngineLauncherProxy", "UE4Game",
 "VGK", "Vanguard", "VGC", "VPN", "NordVPN", "ExpressVPN", "Spotify", "Teams", "Outlook", "OBS",
-"Vuze", "Chrome", "Twitter" 
+"Vuze", "Chrome", "Twitter", "FireFox", "Opera" 
 
 $linhaApoio = "211 165 545"
-$notMetStr = "A verificar se o computador e a rede cumprem os requisitos mínimos estabelecidos no manual de Boas Práticas para o uso do Posto Virtual...", 
-"Computador e Rede não cumprem os requisitos mínimos estabelecidos no manual de Boas Práticas, para o uso do Posto Virtual!",
-"Computador não cumpre os requisitos mínimos estabelecidos no manual de Boas Práticas para o uso do Posto Virtual!",
-"Rede não cumpre os requisitos mínimos estabelecidos no manual de Boas Práticas para o uso do Posto Virtual!"
-
-$downloadURL = "https://install.speedtest.net/app/cli/ookla-speedtest-1.0.0-win64.zip"
-$downloadPath = "C:\Windows\Temp\SpeedTest.zip"
-$extractToPath = "C:\Windows\Temp\SpeedTest"
-$speedTestEXEPath = "C:\Windows\Temp\SpeedTest\speedtest.exe"
+$notMetStr = "A verificar se o computador e a internet cumprem os requisitos mínimos estabelecidos no manual de Boas Práticas para o uso do Posto Virtual...", 
+"O computador e a internet não cumprem os requisitos mínimos estabelecidos no manual de Boas Práticas, para o uso do Posto Virtual!",
+"O computador não cumpre os requisitos mínimos estabelecidos no manual de Boas Práticas para o uso do Posto Virtual!",
+"A internet não cumpre os requisitos mínimos estabelecidos no manual de Boas Práticas para o uso do Posto Virtual!"
 #endregion
 
 #region UTILS
@@ -60,8 +58,8 @@ Function log {
         [string] $message
     )
     $logFilePath = $env:LOCALAPPDATA.ToString() + "\MEDICARE\logs.txt"
-    if((Test-Path $logFilePath) -eq $false) { New-Item -Path $logFilePath -ItemType File }
-    Write-Output "[$prefix - $(Get-Date -Format "dd/MM/yyyy HH:mm:ss")] : $message" >> $logFilePath
+    if((Test-Path -Path $logFilePath) -eq $False) { New-Item -Path $logFilePath -ItemType File }
+    Write-Output "[$prefix - CPU $((Get-CimInstance -Class Win32_Processor).LoadPercentage)% - $(Get-Date -Format "dd/MM/yyyy HH:mm:ss")] : $message" >> $logFilePath
 }
 #endregion
 
@@ -122,7 +120,7 @@ $notMetLb = New-Object System.Windows.Forms.Label -Property @{
         X = 5
         Y = 20
     }
-    ForeColor = 'Gray'
+    ForeColor = 'Black'
     AutoSize = $false
     TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
     Size = New-Object System.Drawing.Size -Property @{
@@ -312,17 +310,26 @@ Function CheckHardware {
 
     $intel = $cpuName.Contains("Intel")
     $amd = $cpuName.Contains("AMD")
-    if($intel){ 
+    if($intel){
+        $cpuShortName = [regex]::new("i\d-\d+.").Match($cpuName).Value
         $cpuModifier = [regex]::new("(?<=i)\d+").Match($cpuName).Value
         $cpuGen = [regex]::new("-(\d+)").Match($cpuName).Value
+        $cpuGen = [int]$cpuGen.Substring(1, $cpuGen.Length-1)
         $minLb = $form.Controls.Find("MinimumLabel0", $true)[0]
-        if($cpuModifier -ne ""){
+        if($cpuShortName -ne ""){
             $form.Controls.Find('LabelStep0', $true)[0].Text += " (i$cpuModifier@" + [math]::round($cpuCurrentClock/1000, 2) + "GHz)"
             $form.Controls.Find('PictureBoxStep0', $true)[0].Image = $uncheckedImage
-            
-            if($cpuModifier -eq $minIntelCPUModifier) { $minIntelCPUClock = 3000; }
-            elseif($cpuModifier -gt $minIntelCPUModifier -and $cpuGen -gt 8) { $minIntelCPUClock = $cpuBaseClock; }
-            elseif($cpuModifier -gt $minIntelCPUModifier) { $minIntelCPUClock = 1800; }
+            if($cpuGen -ge 8000){
+                $minIntelCPUClock = $cpuBaseClock;
+                foreach($exception in $intelCPUExceptions){
+                    if($cpuShortName -eq $exception){ $minIntelCPUClock = 3000 }
+                }
+            }
+            if($cpuModifier -gt $minIntelCPUModifier) { $minIntelCPUClock = 2300; }
+
+            #if($cpuModifier -eq $minIntelCPUModifier) { $minIntelCPUClock = 3000; }
+            #elseif($cpuModifier -gt $minIntelCPUModifier -and $cpuGen -gt 8000) { $minIntelCPUClock = $cpuBaseClock; }
+            #elseif($cpuModifier -gt $minIntelCPUModifier) { $minIntelCPUClock = 1800; }
 
             if($cpuModifier -ge $minIntelCPUModifier -and $cpuCurrentClock -lt $minIntelCPUClock){$minLb.Text = "* Mínimo " + ([math]::round($minIntelCPUClock/1000, 2)).ToString("0.0").Replace(',', '.') + "GHz"}
             elseif($cpuModifier -lt $minIntelCPUModifier -and $cpuCurrentClock -ge $minIntelCPUClock){$minLb.Text = "* Mínimo i" + $minIntelCPUModifier}
@@ -330,7 +337,8 @@ Function CheckHardware {
             $minLb.Text = "* Processador compatível"
         }
     } elseif($amd) { 
-        $cpuModifier = [regex]::new("(?<=AMD Ryzen )\d+").Match($cpuName).Value
+        $cpuModifier = [regex]::new("(?<=Ryzen )\d+").Match($cpuName).Value
+        $cpuGen = [regex]::new("(?<=Ryzen \d\s)\d+").Match($cpuName).Value
         $minLb = $form.Controls.Find("MinimumLabel0", $true)[0]
         if($cpuModifier -ne ""){
             $form.Controls.Find('LabelStep0', $true)[0].Text += " (Ryzen $cpuModifier@" + [math]::round($cpuCurrentClock/1000, 2) + "GHz)"
@@ -354,7 +362,7 @@ Function CheckHardware {
     if($intel -and $cpuModifier -ge $minIntelCPUModifier -and $cpuCurrentClock -ge $minIntelCPUClock -and $cpuLoad -le $maxCPULoad){$form.Controls.Find('PictureBoxStep0', $true)[0].Image = $checkedImage}
     elseif($amd -and $cpuModifier -ge $minAMDCPUModifier -and $cpuCurrentClock -ge $minAMDCPUClock -and $cpuLoad -le $maxCPULoad){$form.Controls.Find('PictureBoxStep0', $true)[0].Image = $checkedImage}
     else { $form.Controls.Find('MinimumLabel0', $true)[0].Visible = $true; $global:pc = $false }
-    #endregion 
+    #endregion
 
     #region RAM
     $totalRam = (Get-CimInstance -Class Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1MB
@@ -419,18 +427,23 @@ Function CheckHardware {
         $form.Controls.Find('MinimumLabel5', $true)[0].Visible = $true
     }
     #endregion
-    if(!$global:pc) { log "MAIN" "Hardware didn't pass!" }
+    if(!$global:pc) { log "MAIN" "Hardware check didn't pass!" }
 }
 Function CheckInternet {
     log "MAIN" "Checking internet..."
     
-    #region VALIDATE INTERNET CONNECTION
+    $downloadURL = "https://install.speedtest.net/app/cli/ookla-speedtest-1.0.0-win64.zip"
+    $outZipPath = $env:HOMEDRIVE+"\Windows\Temp\SpeedTest.zip"
+    $extractToPath = $env:HOMEDRIVE+"\Windows\Temp\SpeedTest"
+    $speedTestEXEPath = $env:HOMEDRIVE+"\Windows\Temp\SpeedTest\speedtest.exe"
+
+    #region TEST INTERNET CONNECTION
     $valid = Test-Connection -ComputerName google.pt -Quiet
-    if(!$valid) 
+    if(!$valid)
     {
-        $form.Controls.Find('MinimumLabel6', $true)[0].Visible = $true;
-        $form.Controls.Find('MinimumLabel7', $true)[0].Visible = $true;
-        $form.Controls.Find('MinimumLabel8', $true)[0].Visible = $true;
+        $form.Controls.Find('MinimumLabel6', $true)[0].Visible = $true
+        $form.Controls.Find('MinimumLabel7', $true)[0].Visible = $true
+        $form.Controls.Find('MinimumLabel8', $true)[0].Visible = $true
         $form.Controls.Find('PictureBoxStep6', $true)[0].Image = $uncheckedImage
         $form.Controls.Find('PictureBoxStep7', $true)[0].Image = $uncheckedImage
         $form.Controls.Find('PictureBoxStep8', $true)[0].Image = $uncheckedImage
@@ -440,10 +453,15 @@ Function CheckInternet {
     #endregion
 
     #region SPEED TEST LOGIC
-    Invoke-WebRequest -URI $downloadURL -OutFile $global:DownloadPath
+    Invoke-WebRequest -URI $downloadURL -OutFile $outZipPath
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    try { [System.IO.Compression.ZipFile]::ExtractToDirectory($global:DownloadPath, $global:ExtractToPath) }
-    catch {}
+    try { [System.IO.Compression.ZipFile]::ExtractToDirectory($outZipPath, $extractToPath) }
+    catch {
+        $e = $_.Exception
+        $line = $_.InvocationInfo.ScriptLineNumber
+        $msg = $e.Message
+        log "MAIN" "$msg Line $line"
+    }
     $res = & $speedTestEXEPath --accept-gdpr --accept-license --format=json-pretty | ConvertFrom-Json
 
     $downloadSpeed = [math]::Round($res.download.bandwidth/131072)
@@ -460,11 +478,11 @@ Function CheckInternet {
     $form.Controls.Find('LabelStep6', $true)[0].Text += " (" + $downloadSpeed + "Mbps)"
     $form.Controls.Find('LabelStep7', $true)[0].Text += " (" + $uploadSpeed + "Mbps)"
     $form.Controls.Find('LabelStep8', $true)[0].Text += " (" + $latency + "ms)"
+    Remove-Item -Path $outZipPath -Force -ErrorAction Continue
     Remove-Item -Path $extractToPath -Recurse -Force -ErrorAction Continue
-    Remove-Item -Path $downloadPath -Force -ErrorAction Continue
     #endregion
 
-    if(!$global:internet) { log "MAIN" "Internet didn't passed!" }
+    if(!$global:internet) { log "MAIN" "Internet check didn't passed!" }
 }
 Function CheckApps {
     log "MAIN" "Checking applications..."
@@ -476,12 +494,17 @@ Function CheckApps {
             else { $openedApps += $app }
         }
     }
-    if($openedApps.length -eq 0){ $form.Controls.Find('PictureBoxStep9', $true)[0].Image = $checkedImage; }
-    else { 
-        $form.Controls.Find('PictureBoxStep9', $true)[0].Image = $uncheckedImage
+    if($openedApps.length -eq 0){ 
+        log "MAIN" "No forbidden apps found opened"
+        $form.Controls.Find('PictureBoxStep9', $true)[0].Image = $checkedImage
+    }
+    else {
+        log "MAIN" "Forbidden apps found opened ($openedApps)" 
         $form.Topmost = $false
-        $res = [System.Windows.Forms.MessageBox]::Show("$openedApps. Estas aplicações são impactantes para o uso do Posto Virutal e devem estar fechadas, pretende fechá-las?", "Aplicações impactantes", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if($openedApps.Length -eq 1) { $res = [System.Windows.Forms.MessageBox]::Show("$openedApps. Esta aplicação é impactante para o uso do Posto Virutal e deve estar encerrada, pretende encerrá-la?", "Aplicações impactantes", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question) }
+        else { $res = [System.Windows.Forms.MessageBox]::Show("$openedApps. Estas aplicações são impactantes para o uso do Posto Virutal e devem estar encerradas, pretende encerrá-las?", "Aplicações impactantes", [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question) }
         if ($res -eq 'Yes') {
+            log "MAIN" "User accepted to close forbidden apps" 
             $form.Controls.Find('PictureBoxStep9', $true)[0].Image = $checkedImage
             foreach ($app in $forbiddenApps) {
                 $process = (Get-Process | Where-Object name -like "*$app*")
@@ -489,176 +512,280 @@ Function CheckApps {
             }
             $global:apps = $true
         }
-        else { $global:pc = $false; $global:apps = $false; }
+        else { 
+            log "MAIN" "User declined to close forbidden apps"
+            $form.Controls.Find('PictureBoxStep9', $true)[0].Image = $uncheckedImage
+            $global:pc = $false
+            $global:apps = $false
+        }
     }
     #endregion
 
-    if($!global:apps) { log "MAIN" "Applications didn't passed!" }
+    if(!$global:apps) { log "MAIN" "Applications check didn't passed!" }
 }
 Function Run(){
     CheckHardware
     if($global:pc){
         CheckInternet
-
         if($global:internet){
             CheckApps
             if($global:apps){
                 $form.Controls.Find("LabelNotMet", $true)[0].Text = "A verificar se há atualizações para o Remote Desktop Client..."
-                if((winget list "Remote Desktop").Contains("Version")){
-                    $version = (winget list "Remote Desktop" | Select-Object -Last 1).Replace(" winget", "")
-                    $version = ($version.substring($version.LastIndexOf(" "),$version.Length - $version.LastIndexOf(" "))).Trim()
-                }
-                else{
-                    $version = (winget list "Área de Trabalho Remota" | Select-Object -Last 1).Replace(" winget", "")
-                    $version = ($version.substring($version.LastIndexOf(" "),$version.Length - $version.LastIndexOf(" "))).Trim()
-                }
+                if((winget list "Remote Desktop").Contains("Version")){ $version = (winget list "Remote Desktop" | Select-Object -Last 1).Replace(" winget", "") }
+                else{ $version = (winget list "Área de Trabalho Remota" | Select-Object -Last 1).Replace(" winget", "") }
+                if($null -ne $version) { $version = ($version.substring($version.LastIndexOf(" "),$version.Length - $version.LastIndexOf(" "))).Trim() }
                 if($version -match "\d+"){ log "MAIN" "Current version of Remote Desktop Client: $version" }
                 else{ 
                     log "MAIN" "Remote Desktop Client is not installed!" 
                     $form.Controls.Find("LabelNotMet", $true)[0].Text = "A instalar o Remote Desktop Client, por favor aguarde..."
                 }
                 
-                $ProgressPreference = 'SilentlyContinue'
-                $result = Invoke-WebRequest -URI "https://go.microsoft.com/fwlink/?linkid=2139369" -UseBasicParsing
-                $contentDisposition = $result.Headers.'Content-Disposition'
+                $response = Invoke-WebRequest -URI "https://go.microsoft.com/fwlink/?linkid=2139369" -UseBasicParsing
+                $contentDisposition = $response.Headers.'Content-Disposition'
                 $fileName = $contentDisposition.Split('=')[1].Replace('"','')
                 $newestVersion = $fileName.Replace("RemoteDesktop_", "").Replace("_x64.msi", "")
                 log "MAIN" "Newest version of Remote Desktop Client: $newestVersion"
                 
                 if($version -ne $newestVersion){
                     log "MAIN" "Update available! Trying to update..."
-                    $temp = "C:\Windows\Temp\avd.msi"
+                    $temp = $env:HOMEDRIVE+"\Windows\Temp\avd.msi"
                     $form.Controls.Find("LabelNotMet", $true)[0].Text = "A atualizar o Remote Desktop Client, por favor aguarde..."
-                    Invoke-WebRequest -URI "https://go.microsoft.com/fwlink/?linkid=2139369" -OutFile "$temp"
+                    Invoke-WebRequest -URI "https://go.microsoft.com/fwlink/?linkid=2139369" -OutFile $temp
                 
-                    $rdClient = (Get-Process -Name "msrdcw" -ErrorAction SilentlyContinue)
-                    if($null -ne $rdClient) { Stop-Process -Name $rdClient.Name -Force }
+                    Stop-Process -Name "msrdcw" -Force -ErrorAction SilentlyContinue
                     msiexec /i $temp /qn ALLUSERS=2 MSIINSTALLPERUSER=1
                     Start-Sleep -Seconds 20
                     Remove-Item -Path $temp
                     log "MAIN" "Updated to newest version!"
                 }
                 else { log "MAIN" "No update available!" }
-                $path = $env:LOCALAPPDATA.ToString() + "\Programs\Remote Desktop\msrdcw.exe"
+                $path = ($env:LOCALAPPDATA.ToString() + "\Programs\Remote Desktop\msrdcw.exe")
                 Start-Process -FilePath $path
+                Start-Sleep -Seconds 5
 
                 #region MONITOR MODE
                 log "MAIN" "Entered MONITOR mode!"
                 $form.Hide()
-                $dontPromptApps = New-Object System.Collections.Generic.List[System.String]
                 $connected = $false
-                while((Get-Process | Where-Object name -like "msrdcw").length -gt 0){
-                    if(!$connected -and (Get-Process | Where-Object name -like "msrdc").length -gt 0){
+                while($true){
+                    if((Get-Process | Where-Object name -eq "msrdcw").length -eq 0 -and (Get-Process | Where-Object name -eq "msrdc").length -eq 0){ break }
+                    if(!$connected -and (Get-Process | Where-Object name -eq "msrdc").length -gt 0){
                         $connected = $true
                         log "REMOTE DESKTOP" "Remote connection to PC started"
                     }
-                    elseif($connected -and (Get-Process | Where-Object name -like "msrdc").length -eq 0){
+                    elseif($connected -and (Get-Process | Where-Object name -eq "msrdc").length -eq 0){
                         $connected = $false
                         log "REMOTE DESKTOP" "Remote connection to PC closed"
                     }
-                    foreach ($app in $forbiddenApps) {
-                        if($dontPromptApps.Contains("$app")) { continue; }
-                        $process = (Get-Process | Where-Object name -like "*$app*")
-                        if($process.length -gt 0){
-                            log "MONITOR" "Application '$app' was detected opened"
-                            $newForm = New-Object System.Windows.Forms.Form
-                            $newForm.Text = 'Aplicação impactante'
-                            $newForm.Size = New-Object System.Drawing.Size(400,270)
-                            $newForm.StartPosition = 'CenterScreen'
-                            $newForm.FormBorderStyle = 'FixedSingle'
-                            $newForm.AutoSizeMode = 'GrowAndShrink'
-                            $newForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-                            $newForm.SizeGripStyle = 'Hide'
-                            $newForm.AutoScaleMode = 'Dpi'
-                            $newForm.MaximizeBox = $false
-                            $newForm.MinimizeBox = $false
-                            $newForm.BackColor = 'White'
-                            $newForm.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Regular)
-                            $newForm.Topmost = $true
-                            $newForm.ShowIcon = $true
-                            $newForm.Icon = Base64ToIcon('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAZ2AAAGdgEpJm+AAAAFIGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDUgNzkuMTYzNDk5LCAyMDE4LzA4LzEzLTE2OjQwOjIyICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMDQtMTVUMTA6Mzk6NTIrMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTA0LTIzVDExOjMwOjAxKzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTA0LTIzVDExOjMwOjAxKzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmNiZjE3Mzk2LWM5M2QtNDRlNS04NTk0LWU3OTkxOWMyNjY5MSIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpjYmYxNzM5Ni1jOTNkLTQ0ZTUtODU5NC1lNzk5MTljMjY2OTEiIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpjYmYxNzM5Ni1jOTNkLTQ0ZTUtODU5NC1lNzk5MTljMjY2OTEiPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmNiZjE3Mzk2LWM5M2QtNDRlNS04NTk0LWU3OTkxOWMyNjY5MSIgc3RFdnQ6d2hlbj0iMjAxOS0wNC0xNVQxMDozOTo1MiswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+Z62ROQAAA81JREFUWIW1l11sU2UYx3/v29OuHcONLipzQJifgSCg7sPVbawsmgyJRCMmRG68MzEmJl6YGAObzo8LvTHExHjnR7wgRjcFEiNrgWEJDgmMTMwS44y41dVpt7LZ9vQ8XnRd2Pp1zpj/q57nfZ7n/3/fkz7n/yoRwQ4uNDa646YR1OgnFGwRrHpQ9YAomBBhQjSjiOqPmTOh/VeupOz0VeUEnGlsrMuY7kPAAaDallqIA5+kRL/x2KWzf65IQCQQ8KXm5TWElwQqbRIvRwLh3anM7NvFTqSggIVd9wNNKyRejiGXdj/V/uPpqbICTm8P3G9pOQ5sWCXyHMa1i+6OC5GfigpY2PkPQP0qk+fwq0u7m288CZ37EW4Iei3T/dX/SA6wOWOZXxzdts2TJ4Dq5GGBZtutlMIfaKGyYbNDDdJ+m1H1ymIbEWFwZ6BeI2OAz04L36aNbD/yHr5NGwGYHopw+cWXweZMARKZjNzdNXIuqgG0kh675AB37H9ykRzA39bKuhZHf5gqbajDADrcEPQiHHBSfWtXp61YKSjh4Il79lRoqZnfDaxxUqw9nvxYRX6sDNZW+v7erUHtdVqJUo5LCkG07DOUxVZK9HPX1LDh2WeWvGN39S15ebXtj/Dgxx8BYCauEzsZZuq7QdLxmaK9lWKLCu94+GeBewsl6AoPrd9+XZDQDv6djDL89EHMRKJYypgWqCu2WtvRtmJyAO/62/G3t5ZKqdNQ/AUYa6tWTJ6DWeIVAGiQa8UWo9+cIBX7a8Xkc+O/MR05XyplwlDoa4LcV2jVSqW5+NzzrN/3OP5AC8owAFhz150ol2tJbjo+Q3Iymn0QIR2f4Zf3Pyg5HZWSCRXa0XoE5AUnOwucPIan1r8kNjlwjKuH+py0AeRDbWENOKxyMvNLQlmqX1cbZoish7PPb5q2YmUwOze/blA/NDycBj53UhkLn8mPhfJjZfBZ99jxpAZwGenXFczZrfzj6Jckp2KLz/FLI0yfjTghv46Z6YUbLNmpB1rfFOFVux2Uy0XtrjaSk1FmR686IQdFb+fFSA+AkYt5fKovOSePYtMJSyZDbPCUM+IshqbSs28tailgSs+z+o44h3GXdjcVNKUA7cPDE9pSe4Ci0/FmyLWL7uV3A708q+Py9yMuI92koOQMdQSRSEp08/I7QUEBkD0JiXt3gXoHmL8J6gSK3vk5f7DYHbHs5XRwZ6BeK+lZ8I02rZv8A+rTTEb6ukbORUtllhWQQ7gh6M36R7VXWWxViroFL6GyX1T1u8Co0gxQ7Q13hkK2RuN/DSJ8sReEgaAAAAAASUVORK5CYII=')
-                            $global:forms.Add($newForm)
+                    if($connected){
+                        foreach ($app in $forbiddenApps) {
+                            $process = (Get-Process | Where-Object name -like "*$app*")
+                            if($process.length -gt 0){
+                                log "MONITOR" "Application '$app' was detected opened"
+                                $newForm = New-Object System.Windows.Forms.Form
+                                $newForm.Text = 'Aplicação impactante'
+                                $newForm.Size = New-Object System.Drawing.Size(400,270)
+                                $newForm.StartPosition = 'CenterScreen'
+                                $newForm.FormBorderStyle = 'FixedSingle'
+                                $newForm.AutoSizeMode = 'GrowAndShrink'
+                                $newForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+                                $newForm.SizeGripStyle = 'Hide'
+                                $newForm.AutoScaleMode = 'Dpi'
+                                $newForm.MaximizeBox = $false
+                                $newForm.MinimizeBox = $false
+                                $newForm.BackColor = 'White'
+                                $newForm.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Regular)
+                                $newForm.Topmost = $true
+                                $newForm.ShowIcon = $true
+                                $newForm.Icon = Base64ToIcon('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAZ2AAAGdgEpJm+AAAAFIGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDUgNzkuMTYzNDk5LCAyMDE4LzA4LzEzLTE2OjQwOjIyICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMDQtMTVUMTA6Mzk6NTIrMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTA0LTIzVDExOjMwOjAxKzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTA0LTIzVDExOjMwOjAxKzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmNiZjE3Mzk2LWM5M2QtNDRlNS04NTk0LWU3OTkxOWMyNjY5MSIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpjYmYxNzM5Ni1jOTNkLTQ0ZTUtODU5NC1lNzk5MTljMjY2OTEiIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpjYmYxNzM5Ni1jOTNkLTQ0ZTUtODU5NC1lNzk5MTljMjY2OTEiPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmNiZjE3Mzk2LWM5M2QtNDRlNS04NTk0LWU3OTkxOWMyNjY5MSIgc3RFdnQ6d2hlbj0iMjAxOS0wNC0xNVQxMDozOTo1MiswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+Z62ROQAAA81JREFUWIW1l11sU2UYx3/v29OuHcONLipzQJifgSCg7sPVbawsmgyJRCMmRG68MzEmJl6YGAObzo8LvTHExHjnR7wgRjcFEiNrgWEJDgmMTMwS44y41dVpt7LZ9vQ8XnRd2Pp1zpj/q57nfZ7n/3/fkz7n/yoRwQ4uNDa646YR1OgnFGwRrHpQ9YAomBBhQjSjiOqPmTOh/VeupOz0VeUEnGlsrMuY7kPAAaDallqIA5+kRL/x2KWzf65IQCQQ8KXm5TWElwQqbRIvRwLh3anM7NvFTqSggIVd9wNNKyRejiGXdj/V/uPpqbICTm8P3G9pOQ5sWCXyHMa1i+6OC5GfigpY2PkPQP0qk+fwq0u7m288CZ37EW4Iei3T/dX/SA6wOWOZXxzdts2TJ4Dq5GGBZtutlMIfaKGyYbNDDdJ+m1H1ymIbEWFwZ6BeI2OAz04L36aNbD/yHr5NGwGYHopw+cWXweZMARKZjNzdNXIuqgG0kh675AB37H9ykRzA39bKuhZHf5gqbajDADrcEPQiHHBSfWtXp61YKSjh4Il79lRoqZnfDaxxUqw9nvxYRX6sDNZW+v7erUHtdVqJUo5LCkG07DOUxVZK9HPX1LDh2WeWvGN39S15ebXtj/Dgxx8BYCauEzsZZuq7QdLxmaK9lWKLCu94+GeBewsl6AoPrd9+XZDQDv6djDL89EHMRKJYypgWqCu2WtvRtmJyAO/62/G3t5ZKqdNQ/AUYa6tWTJ6DWeIVAGiQa8UWo9+cIBX7a8Xkc+O/MR05XyplwlDoa4LcV2jVSqW5+NzzrN/3OP5AC8owAFhz150ol2tJbjo+Q3Iymn0QIR2f4Zf3Pyg5HZWSCRXa0XoE5AUnOwucPIan1r8kNjlwjKuH+py0AeRDbWENOKxyMvNLQlmqX1cbZoish7PPb5q2YmUwOze/blA/NDycBj53UhkLn8mPhfJjZfBZ99jxpAZwGenXFczZrfzj6Jckp2KLz/FLI0yfjTghv46Z6YUbLNmpB1rfFOFVux2Uy0XtrjaSk1FmR686IQdFb+fFSA+AkYt5fKovOSePYtMJSyZDbPCUM+IshqbSs28tailgSs+z+o44h3GXdjcVNKUA7cPDE9pSe4Ci0/FmyLWL7uV3A708q+Py9yMuI92koOQMdQSRSEp08/I7QUEBkD0JiXt3gXoHmL8J6gSK3vk5f7DYHbHs5XRwZ6BeK+lZ8I02rZv8A+rTTEb6ukbORUtllhWQQ7gh6M36R7VXWWxViroFL6GyX1T1u8Co0gxQ7Q13hkK2RuN/DSJ8sReEgaAAAAAASUVORK5CYII=')
+                                $global:forms.Add($newForm)
 
-                            $lb = New-Object System.Windows.Forms.Label -Property @{
-                                Name = 'Label1'
-                                Font = New-Object System.Drawing.Font('Segoe UI', 20, [System.Drawing.FontStyle]::Bold)
-                                Location = New-Object System.Drawing.Point -Property @{
-                                    X = 50
-                                    Y = 40
+                                $lb = New-Object System.Windows.Forms.Label -Property @{
+                                    Name = 'Label1'
+                                    Font = New-Object System.Drawing.Font('Segoe UI', 20, [System.Drawing.FontStyle]::Bold)
+                                    Location = New-Object System.Drawing.Point -Property @{
+                                        X = 50
+                                        Y = 40
+                                    }
+                                    ForeColor = "#AE1022"
+                                    AutoSize = $true
+                                    Text = "Aplicação impactante"
                                 }
-                                ForeColor = "#AE1022"
-                                AutoSize = $true
-                                Text = "Aplicação impactante"
-                            }
-                            $newForm.Controls.Add($lb)
-                            $lb = New-Object System.Windows.Forms.Label -Property @{
-                                Name = 'Label2'
-                                Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
-                                Location = New-Object System.Drawing.Point -Property @{
-                                    X = 0
-                                    Y = $lb.Location.Y+40
+                                $newForm.Controls.Add($lb)
+                                $lb = New-Object System.Windows.Forms.Label -Property @{
+                                    Name = 'Label2'
+                                    Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
+                                    Location = New-Object System.Drawing.Point -Property @{
+                                        X = 0
+                                        Y = $lb.Location.Y+40
+                                    }
+                                    ForeColor = "#AE1022"
+                                    Size = New-Object System.Drawing.Size -Property @{
+                                        Width = $newForm.Width
+                                        Height = 20
+                                    }
+                                    TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
+                                    Text = "Permite que a seguinte aplicação seja encerrada?"
                                 }
-                                ForeColor = "#AE1022"
-                                Size = New-Object System.Drawing.Size -Property @{
-                                    Width = $newForm.Width
-                                    Height = 20
+                                $newForm.Controls.Add($lb)
+                                $lb = New-Object System.Windows.Forms.Label -Property @{
+                                    Name = 'Label2'
+                                    Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Regular)
+                                    Location = New-Object System.Drawing.Point -Property @{
+                                        X = 0
+                                        Y = $lb.Location.Y+30
+                                    }
+                                    ForeColor = "#AE1022"
+                                    Size = New-Object System.Drawing.Size -Property @{
+                                        Width = $newForm.Width-20
+                                        Height = 40
+                                    }
+                                    TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
+                                    Text = $app
                                 }
-                                TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
-                                Text = "Permite que a seguinte aplicação seja fechada?"
-                            }
-                            $newForm.Controls.Add($lb)
-                            $lb = New-Object System.Windows.Forms.Label -Property @{
-                                Name = 'Label2'
-                                Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Regular)
-                                Location = New-Object System.Drawing.Point -Property @{
-                                    X = 0
-                                    Y = $lb.Location.Y+30
-                                }
-                                ForeColor = "#AE1022"
-                                Size = New-Object System.Drawing.Size -Property @{
-                                    Width = $newForm.Width-20
-                                    Height = 40
-                                }
-                                TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
-                                Text = $app
-                            }
-                            $newForm.Controls.Add($lb)
+                                $newForm.Controls.Add($lb)
 
-                            $pb = New-Object System.Windows.Forms.PictureBox -Property @{
-                                Name = 'PictureBox1'
-                                Size = New-Object System.Drawing.Size -Property @{
-                                    Width = 45
-                                    Height = 45
+                                $pb = New-Object System.Windows.Forms.PictureBox -Property @{
+                                    Name = 'PictureBox1'
+                                    Size = New-Object System.Drawing.Size -Property @{
+                                        Width = 45
+                                        Height = 45
+                                    }
+                                    Location = New-Object System.Drawing.Point -Property @{
+                                        X = 90
+                                        Y = 160
+                                    }
+                                    SizeMode = 'Zoom'
+                                    Image = $uncheckedImage
                                 }
-                                Location = New-Object System.Drawing.Point -Property @{
-                                    X = 90
-                                    Y = 160
+                                $pb.Add_Click({
+                                    $newForm.Close()
+                                    log "MONITOR" "User declined to close '$app'"
+
+                                    $newForm = New-Object System.Windows.Forms.Form
+                                    $newForm.Text = 'Aplicação impactante'
+                                    $newForm.Size = New-Object System.Drawing.Size(400,300)
+                                    $newForm.StartPosition = 'CenterScreen'
+                                    $newForm.FormBorderStyle = 'FixedSingle'
+                                    $newForm.AutoSizeMode = 'GrowAndShrink'
+                                    $newForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+                                    $newForm.SizeGripStyle = 'Hide'
+                                    $newForm.AutoScaleMode = 'Dpi'
+                                    $newForm.MaximizeBox = $false
+                                    $newForm.MinimizeBox = $false
+                                    $newForm.BackColor = 'White'
+                                    $newForm.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Regular)
+                                    $newForm.Topmost = $true
+                                    $newForm.ShowIcon = $true
+                                    $newForm.Icon = Base64ToIcon('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAACXBIWXMAAAZ2AAAGdgEpJm+AAAAFIGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDUgNzkuMTYzNDk5LCAyMDE4LzA4LzEzLTE2OjQwOjIyICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTktMDQtMTVUMTA6Mzk6NTIrMDE6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDE5LTA0LTIzVDExOjMwOjAxKzAxOjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDE5LTA0LTIzVDExOjMwOjAxKzAxOjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOmNiZjE3Mzk2LWM5M2QtNDRlNS04NTk0LWU3OTkxOWMyNjY5MSIgeG1wTU06RG9jdW1lbnRJRD0ieG1wLmRpZDpjYmYxNzM5Ni1jOTNkLTQ0ZTUtODU5NC1lNzk5MTljMjY2OTEiIHhtcE1NOk9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDpjYmYxNzM5Ni1jOTNkLTQ0ZTUtODU5NC1lNzk5MTljMjY2OTEiPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9uPSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmNiZjE3Mzk2LWM5M2QtNDRlNS04NTk0LWU3OTkxOWMyNjY5MSIgc3RFdnQ6d2hlbj0iMjAxOS0wNC0xNVQxMDozOTo1MiswMTowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTkgKE1hY2ludG9zaCkiLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+Z62ROQAAA81JREFUWIW1l11sU2UYx3/v29OuHcONLipzQJifgSCg7sPVbawsmgyJRCMmRG68MzEmJl6YGAObzo8LvTHExHjnR7wgRjcFEiNrgWEJDgmMTMwS44y41dVpt7LZ9vQ8XnRd2Pp1zpj/q57nfZ7n/3/fkz7n/yoRwQ4uNDa646YR1OgnFGwRrHpQ9YAomBBhQjSjiOqPmTOh/VeupOz0VeUEnGlsrMuY7kPAAaDallqIA5+kRL/x2KWzf65IQCQQ8KXm5TWElwQqbRIvRwLh3anM7NvFTqSggIVd9wNNKyRejiGXdj/V/uPpqbICTm8P3G9pOQ5sWCXyHMa1i+6OC5GfigpY2PkPQP0qk+fwq0u7m288CZ37EW4Iei3T/dX/SA6wOWOZXxzdts2TJ4Dq5GGBZtutlMIfaKGyYbNDDdJ+m1H1ymIbEWFwZ6BeI2OAz04L36aNbD/yHr5NGwGYHopw+cWXweZMARKZjNzdNXIuqgG0kh675AB37H9ykRzA39bKuhZHf5gqbajDADrcEPQiHHBSfWtXp61YKSjh4Il79lRoqZnfDaxxUqw9nvxYRX6sDNZW+v7erUHtdVqJUo5LCkG07DOUxVZK9HPX1LDh2WeWvGN39S15ebXtj/Dgxx8BYCauEzsZZuq7QdLxmaK9lWKLCu94+GeBewsl6AoPrd9+XZDQDv6djDL89EHMRKJYypgWqCu2WtvRtmJyAO/62/G3t5ZKqdNQ/AUYa6tWTJ6DWeIVAGiQa8UWo9+cIBX7a8Xkc+O/MR05XyplwlDoa4LcV2jVSqW5+NzzrN/3OP5AC8owAFhz150ol2tJbjo+Q3Iymn0QIR2f4Zf3Pyg5HZWSCRXa0XoE5AUnOwucPIan1r8kNjlwjKuH+py0AeRDbWENOKxyMvNLQlmqX1cbZoish7PPb5q2YmUwOze/blA/NDycBj53UhkLn8mPhfJjZfBZ99jxpAZwGenXFczZrfzj6Jckp2KLz/FLI0yfjTghv46Z6YUbLNmpB1rfFOFVux2Uy0XtrjaSk1FmR686IQdFb+fFSA+AkYt5fKovOSePYtMJSyZDbPCUM+IshqbSs28tailgSs+z+o44h3GXdjcVNKUA7cPDE9pSe4Ci0/FmyLWL7uV3A708q+Py9yMuI92koOQMdQSRSEp08/I7QUEBkD0JiXt3gXoHmL8J6gSK3vk5f7DYHbHs5XRwZ6BeK+lZ8I02rZv8A+rTTEb6ukbORUtllhWQQ7gh6M36R7VXWWxViroFL6GyX1T1u8Co0gxQ7Q13hkK2RuN/DSJ8sReEgaAAAAAASUVORK5CYII=')
+                                    $global:forms.Add($newForm)
+
+                                    $lb = New-Object System.Windows.Forms.Label -Property @{
+                                        Name = 'Label1'
+                                        Font = New-Object System.Drawing.Font('Segoe UI', 20, [System.Drawing.FontStyle]::Bold)
+                                        Location = New-Object System.Drawing.Point -Property @{
+                                            X = 50
+                                            Y = 40
+                                        }
+                                        ForeColor = "#AE1022"
+                                        AutoSize = $true
+                                        Text = "Aplicação impactante"
+                                    }
+                                    $newForm.Controls.Add($lb)
+                                    $lb = New-Object System.Windows.Forms.Label -Property @{
+                                        Name = 'Label2'
+                                        Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
+                                        Location = New-Object System.Drawing.Point -Property @{
+                                            X = 0
+                                            Y = $lb.Location.Y+40
+                                        }
+                                        ForeColor = "#AE1022"
+                                        Size = New-Object System.Drawing.Size -Property @{
+                                            Width = $newForm.Width
+                                            Height = 65
+                                        }
+                                        TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
+                                        Text = "O Posto Virtual irá ser encerrado caso a aplicação não seja encerrada! Permite que a seguinte aplicação seja encerrada?"
+                                    }
+                                    $newForm.Controls.Add($lb)
+                                    $lb = New-Object System.Windows.Forms.Label -Property @{
+                                        Name = 'Label2'
+                                        Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Regular)
+                                        Location = New-Object System.Drawing.Point -Property @{
+                                            X = 0
+                                            Y = $lb.Location.Y+70
+                                        }
+                                        ForeColor = "#AE1022"
+                                        Size = New-Object System.Drawing.Size -Property @{
+                                            Width = $newForm.Width-20
+                                            Height = 40
+                                        }
+                                        TextAlign = [System.Windows.Forms.HorizontalAlignment]::Center
+                                        Text = $app
+                                    }
+                                    $newForm.Controls.Add($lb)
+                                    $pb = New-Object System.Windows.Forms.PictureBox -Property @{
+                                        Name = 'PictureBox1'
+                                        Size = New-Object System.Drawing.Size -Property @{
+                                            Width = 45
+                                            Height = 45
+                                        }
+                                        Location = New-Object System.Drawing.Point -Property @{
+                                            X = 90
+                                            Y = 210
+                                        }
+                                        SizeMode = 'Zoom'
+                                        Image = $uncheckedImage
+                                    }
+                                    $pb.Add_Click({
+                                        Stop-Process -Name "msrdc" -Force
+                                        log "MONITOR" "User declined to close '$app' on second attempt, closed Remote Desktop"
+                                        $newForm.Close()
+                                    })
+                                    $newForm.Controls.Add($pb)
+                                    $pb = New-Object System.Windows.Forms.PictureBox -Property @{
+                                        Name = 'PictureBox2'
+                                        Size = New-Object System.Drawing.Size -Property @{
+                                            Width = 45
+                                            Height = 45
+                                        }
+                                        Location = New-Object System.Drawing.Point -Property @{
+                                            X = 250
+                                            Y = 210
+                                        }
+                                        SizeMode = 'Zoom'
+                                        Image = $checkedImage
+                                    }
+                                    $pb.Add_Click({ 
+                                        Stop-Process -Name $process.Name -Force
+                                        log "MONITOR" "User accepted to close '$app' on second attempt"
+                                        $newForm.Close()
+                                    })
+                                    $newForm.Controls.Add($pb)
+                                    $newForm.ShowDialog() | Out-Null
+                                })
+                                $newForm.Controls.Add($pb)
+                                $pb = New-Object System.Windows.Forms.PictureBox -Property @{
+                                    Name = 'PictureBox2'
+                                    Size = New-Object System.Drawing.Size -Property @{
+                                        Width = 45
+                                        Height = 45
+                                    }
+                                    Location = New-Object System.Drawing.Point -Property @{
+                                        X = 250
+                                        Y = 160
+                                    }
+                                    SizeMode = 'Zoom'
+                                    Image = $checkedImage
                                 }
-                                SizeMode = 'Zoom'
-                                Image = $uncheckedImage
+                                $pb.Add_Click({ 
+                                    Stop-Process -Name $process.Name -Force
+                                    log "MONITOR" "User accepted to close '$app'"
+                                    $newForm.Close()
+                                })
+                                $newForm.Controls.Add($pb)
+                                $newForm.ShowDialog() | Out-Null
                             }
-                            $pb.Add_Click({ 
-                                $newForm.Close();
-                                $dontPromptApps.Add("$app");
-                                log "MONITOR" "User declined to close '$app'";
-                            })
-                            $newForm.Controls.Add($pb)
-                            $pb = New-Object System.Windows.Forms.PictureBox -Property @{
-                                Name = 'PictureBox2'
-                                Size = New-Object System.Drawing.Size -Property @{
-                                    Width = 45
-                                    Height = 45
-                                }
-                                Location = New-Object System.Drawing.Point -Property @{
-                                    X = 250
-                                    Y = 160
-                                }
-                                SizeMode = 'Zoom'
-                                Image = $checkedImage
-                            }
-                            $pb.Add_Click({ Stop-Process -Name $process.Name -Force; log "MONITOR" "User accepted to close '$app'"; $newForm.Close(); })
-                            $newForm.Controls.Add($pb)
-                            $newForm.ShowDialog() | Out-Null
                         }
                     }
                     Start-Sleep -Seconds 5
